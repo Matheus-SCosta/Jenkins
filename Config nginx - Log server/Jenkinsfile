@@ -1,0 +1,42 @@
+String APP = "${APP}"
+String[] APPS = APP.split(',')
+String EFS = "/efs/volumes/logs/TST"
+
+node('master'){
+
+    stage('deleteDir') {
+      deleteDir()
+    }
+
+    
+    stage('Sending nginx'){
+
+        for (i=0; i < APPS.size(); i++) {
+            sshagent (credentials: ['LAB-HML-FRONT']) {
+                sh """ 
+                    ssh -p 2222 -o StrictHostKeyChecking=no jenkins@10.50.10.5 sudo cp --preserv=context /home/jenkins/default.conf /home/jenkins/${APPS[i]}.conf
+                    ssh -p 2222 -o StrictHostKeyChecking=no jenkins@10.50.10.5 sudo sed -i "s/EMISSOR/${APPS[i]}/" /home/jenkins/${APPS[i]}.conf
+                    ssh -p 2222 -o StrictHostKeyChecking=no jenkins@10.50.10.5 sudo mv /home/jenkins/${APPS[i]}.conf /etc/nginx/sites-available/teste-mktpay
+                    ssh -p 2222 -o StrictHostKeyChecking=no jenkins@10.50.10.5 sudo nginx -t
+                """
+            }
+        }    
+    }
+    
+    stage('Sending logtx'){
+    
+        for (i=0; i < APPS.size(); i++) {
+            sshagent (credentials: ['LAB-LOGTX']) {
+           
+            // Criando pasta do emissor para o logtx/efs
+                sh """ 
+                    ssh -p 22 -o StrictHostKeyChecking=no jenkins@10.50.2.6 sudo mkdir -p ${EFS}/${APPS[i]}
+                    ssh -p 22 -o StrictHostKeyChecking=no jenkins@10.50.2.6 sudo chown root: ${EFS}/${APPS[i]}
+                    ssh -p 22 -o StrictHostKeyChecking=no jenkins@10.50.2.6 sudo chmod 755 ${EFS}/${APPS[i]}
+                """
+            }        
+        }
+        
+    }
+    
+} 

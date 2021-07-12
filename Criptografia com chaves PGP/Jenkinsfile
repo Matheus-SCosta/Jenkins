@@ -1,0 +1,65 @@
+node('master') {
+
+    if (params.EMISSOR.toString().isEmpty()) { 
+        EMISSOR="${DIGITE_EMISSOR}"
+    } 
+    else {
+        EMISSOR="${EMISSOR}"
+    }
+
+    COLUNAS = sh (script: """ echo ${EMISSOR} | tr '/' ' ' | awk '{print NF}' """, returnStdout: true).trim()
+    EMISSOR = sh (script: """ echo ${EMISSOR} | tr '/' ' ' | cut -d ' ' -f ${COLUNAS} """, returnStdout: true).trim()
+    NOME_EMISSOR = sh (script: """ echo ${EMISSOR} | cut -d '.' -f 1 """, returnStdout: true).trim()
+    LINHAS_CHAVE_SOLICITANTE = sh (script: """ echo ${CHAVE_SOLICITANTE_ASC} | wc -c """, returnStdout: true).trim()
+    String EMAIL = "${EMAIL}"
+    
+    
+    stage('DeleteDir'){
+        sh """
+        rm -rf keys2.txt keys.txt *.nsk.gpg *.nsk chave_solicitante.asc *.zip 2>/dev/null
+        """
+    }
+    
+    stage("Baixando em S3 chave ${EMISSOR}"){
+        KEY_S3 = sh (script: """echo Chaves/${EMISSOR}""", returnStdout: true).trim()
+        sh "aws s3 cp s3://lab-key-sync/${KEY_S3} ."
+
+    }
+    
+    stage('Formatando chaves') {
+        sh """
+            echo "-----BEGIN PGP PUBLIC KEY BLOCK-----" > chave_solicitante.asc
+            echo "" >> chave_solicitante.asc
+            echo ${CHAVE_SOLICITANTE_ASC} | cut -d " " -f 6-${LINHAS_CHAVE_SOLICITANTE} | tr ' ' '\n' | sed 's/PGP//' | sed 's/PUBLIC//' | sed 's/KEY//' | sed 's/BLOCK-----//' | tr -s '\n'| sed 's/-----END/-----END PGP PUBLIC KEY BLOCK-----/' >> chave_solicitante.asc
+            
+        """
+    }
+    
+    stage ("Importando chaves") {
+        sh """
+            gpg --import chave_solicitante.asc
+            gpg --list-keys
+            gpg --list-keys > keys.txt
+            cat keys.txt | grep -E '^uid' | sed 's/uid//' > keys2.txt
+            cat keys2.txt | tr -s ' ' | sed 's/\$/"/' | sed 's/^/"/' | sed 's/" /"/' > keys.txt
+        """
+    }
+    
+    stage ("Criptografando ${EMISSOR}"){
+        KEY_DEVOPS = sh (script: """ cat keys.txt | awk NR==1 """, returnStdout: true).trim()
+        KEY_SOLICITANTE = sh (script: """ cat keys.txt | awk NR==2 """, returnStdout: true).trim()
+        sh """
+        gpg --always-trust --local-user ${KEY_DEVOPS} --recipient ${KEY_SOLICITANTE} --encrypt ${EMISSOR}
+        gpg --batch --yes --delete-key ${KEY_SOLICITANTE}
+        mkdir ${NOME_EMISSOR} && cp conductor_devops.asc readme.txt ${NOME_EMISSOR}.nsk.gpg ${NOME_EMISSOR}
+        sed -i 's/emissor.nsk.gpg/${NOME_EMISSOR}.nsk.gpg/' ${NOME_EMISSOR}/readme.txt
+        zip -r ${NOME_EMISSOR}.zip ${NOME_EMISSOR}/*
+        rm -rf ${NOME_EMISSOR}
+        """
+    }
+    
+    stage("Enviando para ${EMAIL}"){
+        sh """ ./sendEmail -t ${EMAIL} -m 'Segue arquivo com a chave encriptada do emissor ${NOME_EMISSOR} com manuais para criacao e exportacao de chave e manuais para descriptografia para Linux e Windows.' -a ${NOME_EMISSOR}.zip Manual-Linux.pdf Manual-Windows.pdf Criacao_importacao_exportacao_descritografia.pdf -s 10.50.20.53:587 -u 'Chave encriptada do emissor ${NOME_EMISSOR}' -f postfix@pay.com.br"""
+    } 
+        
+}

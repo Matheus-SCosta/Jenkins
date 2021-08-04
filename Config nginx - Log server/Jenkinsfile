@@ -1,6 +1,6 @@
 String APP = "${APP}"
 String[] APPS = APP.split(',')
-String EFS = "/efs/volumes/logs/TST"
+String EFS = "/efs/volumes/logs/tests"
 
 node('master'){
 
@@ -12,27 +12,28 @@ node('master'){
     stage('Sending nginx'){
 
         for (i=0; i < APPS.size(); i++) {
-            sshagent (credentials: ['LAB-HML-FRONT']) {
+            sshagent (credentials: ['MY_CREDENTIAL-ONE']) {
                 sh """ 
-                    ssh -p 2222 -o StrictHostKeyChecking=no jenkins@10.50.10.5 sudo cp --preserv=context /home/jenkins/default.conf /home/jenkins/${APPS[i]}.conf
-                    ssh -p 2222 -o StrictHostKeyChecking=no jenkins@10.50.10.5 sudo sed -i "s/EMISSOR/${APPS[i]}/" /home/jenkins/${APPS[i]}.conf
-                    ssh -p 2222 -o StrictHostKeyChecking=no jenkins@10.50.10.5 sudo mv /home/jenkins/${APPS[i]}.conf /etc/nginx/sites-available/teste-mktpay
-                    ssh -p 2222 -o StrictHostKeyChecking=no jenkins@10.50.10.5 sudo nginx -t
+                    ssh -p 2222 -o StrictHostKeyChecking=no jenkins_user@192.168.0.3 sudo cp --preserv=context /home/jenkins/default.conf /home/jenkins/${APPS[i]}.conf
+                    ssh -p 2222 -o StrictHostKeyChecking=no jenkins_user@192.168.0.3 sudo sed -i "s/EMISSOR/${APPS[i]}/" /home/jenkins/${APPS[i]}.conf
+                    ssh -p 2222 -o StrictHostKeyChecking=no jenkins_user@192.168.0.3 sudo mv /home/jenkins/${APPS[i]}.conf /etc/nginx/sites-available/my_tests
+                    ssh -p 2222 -o StrictHostKeyChecking=no jenkins_user@192.168.0.3 sudo nginx -t
+                    ssh -p 2222 -o StrictHostKeyChecking=no jenkins_user@192.168.0.3 sudo nginx -s reload
                 """
             }
         }    
     }
     
-    stage('Sending logtx'){
+    stage('Sending server logs'){
     
         for (i=0; i < APPS.size(); i++) {
-            sshagent (credentials: ['LAB-LOGTX']) {
+            sshagent (credentials: ['MY_CREDENTIAL-TWO']) {
            
-            // Criando pasta do emissor para o logtx/efs
+            // Criando pasta do cliente para o servidor de logs
                 sh """ 
-                    ssh -p 22 -o StrictHostKeyChecking=no jenkins@10.50.2.6 sudo mkdir -p ${EFS}/${APPS[i]}
-                    ssh -p 22 -o StrictHostKeyChecking=no jenkins@10.50.2.6 sudo chown root: ${EFS}/${APPS[i]}
-                    ssh -p 22 -o StrictHostKeyChecking=no jenkins@10.50.2.6 sudo chmod 755 ${EFS}/${APPS[i]}
+                    ssh -p 22 -o StrictHostKeyChecking=no jenkins_user@192.168.0.3 sudo mkdir -p ${EFS}/${APPS[i]}
+                    ssh -p 22 -o StrictHostKeyChecking=no jenkins_user@192.168.0.3 sudo chown root: ${EFS}/${APPS[i]}
+                    ssh -p 22 -o StrictHostKeyChecking=no jenkins_user@192.168.0.3 sudo chmod 755 ${EFS}/${APPS[i]}
                 """
             }        
         }
